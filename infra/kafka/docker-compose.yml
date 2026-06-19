@@ -11,7 +11,7 @@ services:
     depends_on:
       - zookeeper
     ports:
-      - "9093:9093"   # changed from 9092
+      - "9093:9093"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
@@ -27,7 +27,13 @@ services:
     depends_on:
       - kafka
     ports:
-      - "8081:8080"   # changed from 8080
+      - "8081:8080"
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29093
+
+  redis:
+    image: redis:7.2-alpine
+    ports:
+      - "6380:6379"
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
