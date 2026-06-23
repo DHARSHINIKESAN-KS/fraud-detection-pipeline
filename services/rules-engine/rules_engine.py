@@ -133,13 +133,23 @@ def process_transaction(txn):
     else:
         log.info(f"ALLOW | txn={txn_id[:8]} | user={user_id} | amount=₹{amount}")
 
+def send_to_dlq(raw_message, error):
+    """Send failed transaction to dead letter queue for later review"""
+    dlq_record = {
+        "original_message": raw_message,
+        "error": str(error),
+        "failed_at": datetime.now(timezone.utc).isoformat()
+    }
+    producer.send('txn-dead-letter', value=dlq_record)
+    log.error(f"Sent to DLQ: {error}")
+
 def main():
-    log.info("Rules engine v2 started — with idempotency + decision thresholds")
+    log.info("Rules engine v2 started — with idempotency + decision thresholds + DLQ")
     for message in consumer:
         try:
             process_transaction(message.value)
         except Exception as e:
-            log.error(f"Error: {e}")
+            send_to_dlq(message.value, e)
 
 if __name__ == "__main__":
     main()
