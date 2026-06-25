@@ -1,0 +1,2 @@
+kafka-python-ng
+clickhouse-driver==0.2.6
