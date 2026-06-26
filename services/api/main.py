@@ -6,23 +6,28 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import redis
-from kafka import KafkaProducer
+from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+from starlette.responses import Response
+
+decisions_total = Counter('fraud_decisions_total', 'Total decisions', ['decision'])
+request_latency = Histogram('fraud_api_latency_seconds', 'API latency',
+    buckets=[0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 1.0])
 
 app = FastAPI(title="Fraud Detection Decision API", version="1.0.0")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 r = redis.Redis(host='localhost', port=6380, decode_responses=True)
+_producer = None
 
-producer = KafkaProducer(
-    bootstrap_servers='localhost:9093',
-    value_serializer=lambda v: json.dumps(v).encode('utf-8')
-)
+def get_producer():
+    global _producer
+    if _producer is None:
+        from kafka import KafkaProducer as KP
+        _producer = KP(
+            bootstrap_servers='localhost:9093',
+            value_serializer=lambda v: json.dumps(v).encode('utf-8')
+        )
+    return _producer
 
 VELOCITY_WINDOW = 300
 VELOCITY_THRESHOLD = 5
@@ -82,10 +87,8 @@ def compute_risk_score(velocity_flag, amount_flag, merchant_flag):
     return min(score, 1.0), reasons
 
 def get_decision(risk_score):
-    if risk_score >= 0.7:
-        return "BLOCK"
-    elif risk_score >= 0.4:
-        return "REVIEW"
+    if risk_score >= 0.7: return "BLOCK"
+    elif risk_score >= 0.4: return "REVIEW"
     return "ALLOW"
 
 @app.get("/health")
@@ -94,14 +97,11 @@ def health():
 
 @app.post("/score")
 def score_transaction(txn: Transaction):
-    """Score a transaction and return fraud decision in real-time"""
+    start = time.time()
     txn_id = str(uuid.uuid4())
-
-    # Idempotency check (in case same request retried with explicit txn_id later)
     velocity_flag, velocity_count = check_velocity(txn.user_id)
     amount_flag, avg_amount = check_amount_spike(txn.user_id, txn.amount)
     merchant_flag = check_new_merchant_risk(txn.is_new_merchant, txn.amount)
-
     risk_score, reasons = compute_risk_score(velocity_flag, amount_flag, merchant_flag)
     decision = get_decision(risk_score)
 
@@ -121,22 +121,18 @@ def score_transaction(txn: Transaction):
     r.expire(f"decision:{txn_id}", 86400)
 
     if decision != "ALLOW":
-        producer.send('fraud-alerts', value=record)
+        get_producer().send('fraud-alerts', value=record)  # FIXED
 
-    return {
-        "txn_id": txn_id,
-        "decision": decision,
-        "risk_score": risk_score,
-        "reasons": reasons
-    }
+    decisions_total.labels(decision=decision).inc()
+    request_latency.observe(time.time() - start)
+
+    return {"txn_id": txn_id, "decision": decision, "risk_score": risk_score, "reasons": reasons}
 
 @app.get("/explain/{txn_id}")
 def explain_decision(txn_id: str):
-    """Returns full explanation of why a transaction was scored this way"""
     data = r.hgetall(f"decision:{txn_id}")
     if not data:
         raise HTTPException(status_code=404, detail=f"No decision found for txn_id: {txn_id}")
-    
     return {
         "txn_id": data['txn_id'],
         "user_id": data['user_id'],
@@ -148,3 +144,7 @@ def explain_decision(txn_id: str):
         "user_avg_amount": data.get('user_avg_amount', 'N/A'),
         "timestamp": data['timestamp']
     }
+
+@app.get("/metrics")
+def metrics():
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
