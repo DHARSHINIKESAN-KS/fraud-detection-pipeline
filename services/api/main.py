@@ -17,17 +17,17 @@ app = FastAPI(title="Fraud Detection Decision API", version="1.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 r = redis.Redis(host='localhost', port=6380, decode_responses=True)
-_producer = None
 
-def get_producer():
-    global _producer
-    if _producer is None:
-        from kafka import KafkaProducer as KP
-        _producer = KP(
-            bootstrap_servers='localhost:9093',
-            value_serializer=lambda v: json.dumps(v).encode('utf-8')
-        )
-    return _producer
+try:
+    from kafka import KafkaProducer
+    producer = KafkaProducer(
+        bootstrap_servers='localhost:9093',
+        value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+        request_timeout_ms=1000,
+        retries=1
+    )
+except Exception:
+    producer = None
 
 VELOCITY_WINDOW = 300
 VELOCITY_THRESHOLD = 5
@@ -120,8 +120,11 @@ def score_transaction(txn: Transaction):
     r.hset(f"decision:{txn_id}", mapping=record)
     r.expire(f"decision:{txn_id}", 86400)
 
-    if decision != "ALLOW":
-        get_producer().send('fraud-alerts', value=record)  # FIXED
+    if decision != "ALLOW" and producer:
+        try:
+            producer.send('fraud-alerts', value=record)
+        except Exception:
+            pass
 
     decisions_total.labels(decision=decision).inc()
     request_latency.observe(time.time() - start)
