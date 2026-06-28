@@ -63,15 +63,15 @@ txn-dead-letter topic → failed event retry
 
 ## Tech Stack
 
-| Layer | Technology | Purpose |
+| Layer | Technology |
 |---|---|---|
-| Event Streaming | Apache Kafka | Decouples ingestion from scoring |
-| Rules Engine | Python (custom) | Velocity, amount spike, merchant risk |
-| Decision Cache | Redis | Sub-millisecond lookups, idempotency |
-| API | FastAPI | REST decision service |
-| Analytics | ClickHouse | Historical fraud pattern queries |
-| Metrics | Prometheus | Latency and fraud rate monitoring |
-| Infrastructure | Docker Compose | Local production-equivalent setup |
+| Event Streaming | Apache Kafka |
+| Rules Engine | Python (custom) | 
+| Decision Cache | Redis |
+| API | FastAPI |
+| Analytics | ClickHouse |
+| Metrics | Prometheus |
+| Infrastructure | Docker Compose |
 
 ---
 
