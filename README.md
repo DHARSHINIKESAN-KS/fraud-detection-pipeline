@@ -84,7 +84,7 @@ txn-dead-letter topic → failed event retry
 | p95 latency | 34ms |
 | p99 latency | 41ms |
 | Transactions stored | 9,000+ rows in ClickHouse |
-| Duplicate decisions | 0 (exactly-once guaranteed) |
+| Duplicate decisions | 0  |
 
 
 ---
