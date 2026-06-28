@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Fraud Detection Dashboard</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0f0f1a; color: #fff; font-family: monospace; padding: 24px; }
+h1 { font-size: 20px; margin-bottom: 20px; color: #10b981; }
+.cards { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+.card { background: #1e1e2e; border-radius: 8px; padding: 16px; min-width: 150px; }
+.card-label { font-size: 11px; color: #888; margin-bottom: 6px; }
+.card-value { font-size: 28px; font-weight: bold; }
+.green { color: #10b981; }
+.red { color: #ef4444; }
+.yellow { color: #f59e0b; }
+.purple { color: #a78bfa; }
+table { width: 100%; border-collapse: collapse; background: #1e1e2e; border-radius: 8px; overflow: hidden; }
+th { padding: 10px 12px; text-align: left; font-size: 11px; color: #888; border-bottom: 1px solid #333; }
+td { padding: 10px 12px; font-size: 12px; border-bottom: 1px solid #222; }
+.BLOCK { color: #ef4444; font-weight: bold; }
+.REVIEW { color: #f59e0b; font-weight: bold; }
+.ALLOW { color: #10b981; }
+.header { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="dot"></div>
+  <h1>Fraud Detection Pipeline — Live</h1>
+  <span style="font-size:12px;color:#888" id="updated"></span>
+</div>
+
+<div class="cards">
+  <div class="card"><div class="card-label">Total Scored</div><div class="card-value green" id="total">-</div></div>
+  <div class="card"><div class="card-label">Blocked</div><div class="card-value red" id="blocked">-</div></div>
+  <div class="card"><div class="card-label">Review</div><div class="card-value yellow" id="review">-</div></div>
+  <div class="card"><div class="card-label">Allowed</div><div class="card-value green" id="allowed">-</div></div>
+  <div class="card"><div class="card-label">Fraud Rate</div><div class="card-value red" id="fraud_rate">-</div></div>
+</div>
+
+<h2 style="font-size:13px;color:#888;margin-bottom:10px">Recent Fraud Alerts</h2>
+<table>
+  <thead>
+    <tr><th>Time</th><th>Transaction ID</th><th>User</th><th>Amount</th><th>Decision</th><th>Risk Score</th><th>Reasons</th></tr>
+  </thead>
+  <tbody id="alerts"></tbody>
+</table>
+
+<script>
+async function fetchStats() {
+  try {
+    const r = await fetch('http://localhost:8002/stats');
+    const d = await r.json();
+    document.getElementById('total').textContent = d.total || 0;
+    document.getElementById('blocked').textContent = d.blocked || 0;
+    document.getElementById('review').textContent = d.review || 0;
+    document.getElementById('allowed').textContent = d.allowed || 0;
+    document.getElementById('fraud_rate').textContent = (d.fraud_rate || 0) + '%';
+    document.getElementById('updated').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+  } catch(e) { console.log('Stats error:', e); }
+}
+
+async function fetchAlerts() {
+  try {
+    const r = await fetch('http://localhost:8002/alerts/recent');
+    const alerts = await r.json();
+    const tbody = document.getElementById('alerts');
+    tbody.innerHTML = alerts.map(a => `
+      <tr>
+        <td>${new Date(a.timestamp).toLocaleTimeString()}</td>
+        <td style="color:#888">${a.txn_id ? a.txn_id.substring(0,12)+'...' : 'N/A'}</td>
+        <td>${a.user_id || 'N/A'}</td>
+        <td>₹${parseFloat(a.amount || 0).toFixed(2)}</td>
+        <td class="${a.decision}">${a.decision}</td>
+        <td>${parseFloat(a.risk_score || 0).toFixed(2)}</td>
+        <td style="color:#888">${a.reasons || '[]'}</td>
+      </tr>
+    `).join('');
+  } catch(e) { console.log('Alerts error:', e); }
+}
+
+function refresh() { fetchStats(); fetchAlerts(); }
+refresh();
+setInterval(refresh, 3000);
+</script>
+</body>
+</html>
