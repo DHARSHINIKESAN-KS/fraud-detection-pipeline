@@ -151,3 +151,41 @@ def explain_decision(txn_id: str):
 @app.get("/metrics")
 def metrics():
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+@app.get("/stats")
+def get_stats():
+    try:
+        keys = r.keys("decision:*")
+        total = len(keys)
+        blocked = review = allowed = 0
+        for key in list(keys)[:500]:
+            try:
+                decision = r.hget(key, 'decision')
+                if decision == 'BLOCK': blocked += 1
+                elif decision == 'REVIEW': review += 1
+                elif decision == 'ALLOW': allowed += 1
+            except:
+                pass
+        fraud_rate = round((blocked + review) / total * 100, 1) if total else 0
+        return {"total": total, "blocked": blocked, "review": review,
+                "allowed": allowed, "fraud_rate": fraud_rate}
+    except Exception as e:
+        return {"total": 0, "blocked": 0, "review": 0, "allowed": 0, "fraud_rate": 0}
+@app.get("/alerts/recent")
+def recent_alerts():
+    """Recent fraud alerts from Kafka Redis store"""
+    keys = r.keys("decision:*")
+    alerts = []
+    for key in list(keys)[:20]:
+        data = r.hgetall(key)
+        if data.get('decision') in ('BLOCK', 'REVIEW'):
+            alerts.append({
+                "txn_id": data.get('txn_id'),
+                "user_id": data.get('user_id'),
+                "amount": data.get('amount'),
+                "decision": data.get('decision'),
+                "risk_score": data.get('risk_score'),
+                "reasons": data.get('reasons'),
+                "timestamp": data.get('timestamp')
+            })
+    return alerts
