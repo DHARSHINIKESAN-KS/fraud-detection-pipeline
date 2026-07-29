@@ -1,0 +1,10 @@
+version: '3.8'
+services:
+  producer:
+    build: ./services/producer
+  rules-engine:
+    build: ./services/rules-engine
+  api:
+    build: ./services/api
+    ports:
+      - "8002:8002"
